@@ -32,13 +32,22 @@ export default function GameCanvas({ gameMap, roomSlug, onObjectInteract }: Prop
   useEffect(() => {
     if (!containerRef.current || !user) return;
 
+    const sceneData = {
+      gameMap,
+      username: user.username,
+      avatarColor: user.avatarColor,
+      avatarEmoji: user.avatarEmoji,
+      onNearbyChanged: handleNearbyChanged,
+      onObjectInteract: handleObjectInteract,
+    };
+
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       width: window.innerWidth,
       height: window.innerHeight,
       parent: containerRef.current,
       backgroundColor: '#1a1a2e',
-      scene: [GameScene],
+      scene: [],
       render: { pixelArt: true, antialias: false },
       scale: {
         mode: Phaser.Scale.RESIZE,
@@ -49,29 +58,25 @@ export default function GameCanvas({ gameMap, roomSlug, onObjectInteract }: Prop
     const game = new Phaser.Game(config);
     gameRef.current = game;
 
-    game.events.on('ready', () => {
+    game.events.once('ready', () => {
+      game.scene.add('GameScene', GameScene, true, sceneData);
+
       const scene = game.scene.getScene('GameScene') as GameScene;
       sceneRef.current = scene;
-      scene.scene.start('GameScene', {
-        gameMap,
-        username: user.username,
-        avatarColor: user.avatarColor,
-        avatarEmoji: user.avatarEmoji,
-        onNearbyChanged: handleNearbyChanged,
-        onObjectInteract: handleObjectInteract,
-      });
 
-      // Join socket room after scene starts
-      const socket = getSocket();
-      if (socket) {
-        socket.emit('join_room', {
-          roomSlug,
-          spawnX: gameMap.spawnX,
-          spawnY: gameMap.spawnY,
-          avatarColor: user.avatarColor,
-          avatarEmoji: user.avatarEmoji,
-        });
-      }
+      // Wait for scene create() to finish before emitting socket event
+      scene.events.once('create', () => {
+        const socket = getSocket();
+        if (socket) {
+          socket.emit('join_room', {
+            roomSlug,
+            spawnX: gameMap.spawnX,
+            spawnY: gameMap.spawnY,
+            avatarColor: user.avatarColor,
+            avatarEmoji: user.avatarEmoji,
+          });
+        }
+      });
     });
 
     const handleResize = () => {
